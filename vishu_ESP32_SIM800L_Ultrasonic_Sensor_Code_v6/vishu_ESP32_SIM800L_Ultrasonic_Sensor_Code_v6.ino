@@ -36,7 +36,10 @@ const char auth[] = "9kLBT8G007HKUPI-eZvJOZ_ziUDL7HdX";  //su info@saigi.it
 #define SerialMon Serial
 // Set serial for AT commands (to SIM800 module)
 #define SerialAT Serial1
+// Set serial for UART Communication (to Ultrasonic sensor)
+HardwareSerial SerialPort(2); // use UART2
 
+//#define Serial Serial2
 
 // Configure TinyGSM library
 #define TINY_GSM_MODEM_SIM800      // Modem is SIM800
@@ -54,6 +57,7 @@ const char auth[] = "9kLBT8G007HKUPI-eZvJOZ_ziUDL7HdX";  //su info@saigi.it
 #include <SoftwareSerial.h>
 #include <ArduinoHttpClient.h>
 #include <Adafruit_ADS1X15.h>
+#include <HardwareSerial.h>
 
 #ifdef DUMP_AT_COMMANDS
 #include <StreamDebugger.h>
@@ -69,14 +73,15 @@ TinyGsm modem(SerialAT);
 /////////////////////////////////////////////////////// ULTRASONIC SENSOR PINS /////////////////////////////////////////////////////
 
 //byte byteRead;
-//#define txPin 32
-//#define rxPin 33
-//SoftwareSerial sonarSerial(rxPin, txPin);
-//
-//bool receiving;
-//byte buff[3];
-//int index_STS = 0;
-//uint32_t communicationStarted;
+#define BAUD 9600
+#define txPin 33
+#define rxPin 32
+// SoftwareSerial sonarSerial(rxPin, txPin);
+
+// bool receiving;
+// byte buff[3];
+// int index_STS = 0;
+// uint32_t communicationStarted;
 
 /////////////////////////////////////////////////////// LOGICAL OPERATION VARIABLES /////////////////////////////////////////////////////
 
@@ -162,11 +167,14 @@ void setup() {
   digitalWrite(MODEM_RST, HIGH);
   digitalWrite(MODEM_POWER_ON, HIGH);
 
-  Ultrasonic_Sensor_Setup_Stage();
+  
 
   // Set GSM module baud rate and UART pins
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
   delay(3000);
+
+  // Set UART baud rate and UART pins
+  SerialPort.begin(BAUD, SERIAL_8N1, rxPin, txPin);
 
   // Restart SIM800 module, it takes quite some time
   // To skip it, call init() instead of restart()
@@ -185,6 +193,7 @@ void setup() {
   //esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
 }
 
+
 void loop() {
 
   unsigned long currentMillis = millis();
@@ -193,9 +202,9 @@ void loop() {
   if (currentMillis - previousMillis1 >= 1000) {
     // save the last time you blinked the LED
     previousMillis1 = currentMillis;
-    for (int i=0; i<10; i++) {
-     Ultrasonic_Sensor_Loop_Stage();
-    }
+    //get_fuel_level();
+      
+    
   }
 
   if (Sleep_Button_SS == 0) {
@@ -216,7 +225,7 @@ void loop() {
       previousMillis2 = currentMillis2;
       sendBlynk();
       Sleep_Button_SS = (GetFromBlynk("v0")).toInt();
-     // TIME_TO_SLEEP = (GetFromBlynk("v2")).toDouble();
+      TIME_TO_SLEEP = (GetFromBlynk("v2")).toDouble();
     }
 
     unsigned long currentMillis3 = millis();
@@ -224,7 +233,7 @@ void loop() {
     if (currentMillis3 - previousMillis3 >= Switch_OFF_Deep_Sleep_Activation_Time) {
       // save the last time you blinked the LED
       previousMillis3 = currentMillis3;
-      // sendBlynk();
+      sendBlynk();
       modem.gprsDisconnect();
       SerialMon.println(F("GPRS disconnected"));
       SerialMon.println("Going to sleep ");
@@ -296,22 +305,36 @@ void Modem_On() {
 }
 
 void sendBlynk() {
-  SendToBlynkValue(VpinUltrasonic, String(Ultrasonic_Sensor_Value));
+  SendToBlynkValue(VpinUltrasonic, get_fuel_level());
 }
 
 
-void Ultrasonic_Sensor_Setup_Stage() {
+String get_fuel_level(){
+  int min_string_len = 36;
   
-}
-
-void Ultrasonic_Sensor_Loop_Stage() {
+  while(1){
+   SerialPort.flush();
+   String rx = SerialPort.readStringUntil('#');
+   SerialMon.println("Sensor data output, len :" + String( rx.length()) + rx);
   
-
-  SerialMon.print("Ultrasonic_Sensor_Value(mm) = ");
-  SerialMon.println(Ultrasonic_Sensor_Value);
-
+   if(rx.length() != min_string_len){
+      continue;
+   }
+   if(!rx.startsWith("*XD")) {
+      continue;
+   }
+   String value_str = rx.substring(17,21);
+   double value = value_str.toDouble();
+   value = value/100;
+   SerialMon.print("Ultrasonic_Sensor_Value(cm) = ");
+   SerialMon.println(String(value,2));
+   if(value == 0){
+      delay(5000);
+      continue;
+   }
+  return String(value,2);
+  }
 }
-
 
 String GetFromBlynk(String Vpin) {
   HttpClient httpBlynk(client, serverBlynk, portBlynk);
@@ -345,7 +368,7 @@ String GetFromBlynk(String Vpin) {
       while (httpBlynk.headerAvailable()) {
         String headerName = httpBlynk.readHeaderName();
         String headerValue = httpBlynk.readHeaderValue();
-        SerialMon.println("    " + headerName + " : " + headerValue);
+       // SerialMon.println("    " + headerName + " : " + headerValue);
         if ((millis() - startTimer) > timoutTimer) {
           break;
         }
