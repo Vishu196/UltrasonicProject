@@ -56,8 +56,8 @@ HardwareSerial SerialPort(2); // use UART2
 #include <TinyGsmClient.h>
 #include <SoftwareSerial.h>
 #include <ArduinoHttpClient.h>
-#include <Adafruit_ADS1X15.h>
 #include <HardwareSerial.h>
+#include <HTTPClient.h>
 
 #ifdef DUMP_AT_COMMANDS
 #include <StreamDebugger.h>
@@ -67,8 +67,7 @@ TinyGsm modem(debugger);
 TinyGsm modem(SerialAT);
 #endif
 
-#include <Adafruit_Sensor.h>
-#include <HTTPClient.h>
+
 
 /////////////////////////////////////////////////////// ULTRASONIC SENSOR PINS /////////////////////////////////////////////////////
 
@@ -104,8 +103,8 @@ TinyGsmClient client(modem);
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */ // DONT CHANGE THIS
 double TIME_TO_SLEEP = 300;        /* Time ESP32 will go to sleep (in seconds) */ // DEEP SLEEP TIME CURRENTLY SET TO 5 Mins
 
-int BLYNK_Upload_Time = 5000; // BLYNK Upload Time Interval, Currently set to 05 seconds
-int Switch_OFF_Deep_Sleep_Activation_Time = 120000; // TIME AFTER WHICH DEEP SLEEP WILL BE TRIGGERED CURRENTLY SET TO 2 Mins
+int BLYNK_Upload_Time = 3000; // BLYNK Upload Time Interval, Currently set to 05 seconds
+int Switch_OFF_Deep_Sleep_Activation_Time = 180000; // TIME AFTER WHICH DEEP SLEEP WILL BE TRIGGERED CURRENTLY SET TO 23Mins
 
 #define IP5306_ADDR          0x75
 #define IP5306_REG_SYS_CTL0  0x00
@@ -115,25 +114,6 @@ int Switch_OFF_Deep_Sleep_Activation_Time = 120000; // TIME AFTER WHICH DEEP SLE
 
 
 RTC_DATA_ATTR unsigned long TimeToSleep = 61 * 60;
-
-
-// Variables will change:
-int buttonPushCounter = 0;  // counter for the number of button presses
-int buttonState = 0;        // current state of the button
-int lastButtonState = 0;    // previous state of the button
-
-double Ultrasonic_Sensor_Value = 0;
-
-/*
-
-  // Checks if motion was detected, sets LED HIGH and starts a timer
-  void IRAM_ATTR detectsMovement() {
-  Serial.println("FLOW DETECTED!!!");
-  pulses = pulses + 1;
-  previousMillis3 = millis();
-  }
-*/
-
 
 bool setPowerBoostKeepOn(int en) {
   I2CPower.beginTransmission(IP5306_ADDR);
@@ -145,7 +125,6 @@ bool setPowerBoostKeepOn(int en) {
   }
   return I2CPower.endTransmission() == 0;
 }
-
 
 
 void setup() {
@@ -167,11 +146,9 @@ void setup() {
   digitalWrite(MODEM_RST, HIGH);
   digitalWrite(MODEM_POWER_ON, HIGH);
 
-  
-
   // Set GSM module baud rate and UART pins
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
-  delay(3000);
+  delay(1000);
 
   // Set UART baud rate and UART pins
   SerialPort.begin(BAUD, SERIAL_8N1, rxPin, txPin);
@@ -202,10 +179,7 @@ void loop() {
   if (currentMillis - previousMillis1 >= 1000) {
     // save the last time you blinked the LED
     previousMillis1 = currentMillis;
-    //get_fuel_level();
-      
-    
-  }
+    }
 
   if (Sleep_Button_SS == 0) {
     unsigned long currentMillis2 = millis();
@@ -216,6 +190,8 @@ void loop() {
       sendBlynk();
       Sleep_Button_SS = (GetFromBlynk("v0")).toInt();
       TIME_TO_SLEEP = (GetFromBlynk("v2")).toDouble();
+      SerialMon.println("Sleep Button Status: " + String(Sleep_Button_SS));
+      SerialMon.println("Sleep Time (s): " + String(TIME_TO_SLEEP));
     }
   } else if (Sleep_Button_SS == 1) {
     unsigned long currentMillis2 = millis();
@@ -226,6 +202,8 @@ void loop() {
       sendBlynk();
       Sleep_Button_SS = (GetFromBlynk("v0")).toInt();
       TIME_TO_SLEEP = (GetFromBlynk("v2")).toDouble();
+      SerialMon.println("Sleep Button Status: " + String(Sleep_Button_SS));
+      SerialMon.println("Sleep Time (s): " + String(TIME_TO_SLEEP));
     }
 
     unsigned long currentMillis3 = millis();
@@ -282,7 +260,7 @@ void loop() {
 void Modem_On() {
   SerialMon.println("\nWaiting for network...");
   while (!modem.waitForNetwork()) {
-    delay(1000);
+    delay(500);
    // ESP.restart();
   //return;
   }
@@ -315,6 +293,10 @@ String get_fuel_level(){
   while(1){
    SerialPort.flush();
    String rx = SerialPort.readStringUntil('#');
+   if (rx.length()== 0){
+     delay(1000);
+     continue;
+   }
    SerialMon.println("Sensor data output, len :" + String( rx.length()) + rx);
   
    if(rx.length() != min_string_len){
@@ -342,11 +324,11 @@ String GetFromBlynk(String Vpin) {
   String body = "";
   ///external/api/update?token={token}&pin=V1&value=lon&value=lat
   resourceBlynk = String("/external/api/get?token=") + auth + String("&") + String(Vpin);
-  SerialMon.println(resourceBlynk);
-  SerialMon.print(F("Connecting to "));
-  SerialMon.print(resourceBlynk);
+  //SerialMon.println(resourceBlynk);
+  // SerialMon.println(F("Connecting to "));
+  // SerialMon.print(resourceBlynk);
 
-  SerialMon.println(F("Performing HTTP GET request... "));
+ // SerialMon.println(F("Performing HTTP GET request... "));
   int err = httpBlynk.get(resourceBlynk);
   if (err != 0) {
     SerialMon.println(F("Failed to connect"));
@@ -354,7 +336,7 @@ String GetFromBlynk(String Vpin) {
   }
   else {
     int status = httpBlynk.responseStatusCode();
-    SerialMon.println(F("Response status code: "));
+    SerialMon.print(F("Response status code: "));
     SerialMon.println(status);
     if (status < 1) {
       delay(1000);
@@ -362,7 +344,7 @@ String GetFromBlynk(String Vpin) {
       SerialMon.print(F("Http Error"));
     }
     else if (status == 200) {
-      SerialMon.println(F("Response Headers:"));
+      //SerialMon.println(F("Response Headers:"));
       int timoutTimer = 20000;
       long startTimer = millis();
       while (httpBlynk.headerAvailable()) {
@@ -376,19 +358,19 @@ String GetFromBlynk(String Vpin) {
 
       int length = httpBlynk.contentLength();
       if (length >= 0) {
-        SerialMon.print(F("Content length is: "));
-        SerialMon.println(length);
+        //SerialMon.print(F("Content length is: "));
+        //SerialMon.println(length);
       }
       if (httpBlynk.isResponseChunked()) {
         SerialMon.println(F("The response is chunked"));
       }
 
       body = httpBlynk.responseBody();
-      SerialMon.println(F("Response:"));
-      SerialMon.println(body);
+      // SerialMon.println(F("Response:"));
+      // SerialMon.println(body);
 
-      SerialMon.print(F("Body length is: "));
-      SerialMon.println(body.length());
+      // SerialMon.print(F("Body length is: "));
+      // SerialMon.println(body.length());
 
       // Shutdown
 
@@ -400,8 +382,8 @@ String GetFromBlynk(String Vpin) {
 
     }
   }
-  SerialMon.println(F("Final Response:"));
-  SerialMon.println(body);
+  // SerialMon.println(F("Final Response:"));
+  // SerialMon.print(body);
   return body;
 }
 
@@ -411,11 +393,11 @@ void SendToBlynkValue(String Vpin, String val) {
   HttpClient httpBlynk(client, serverBlynk, portBlynk);
   String resourceBlynk = "";
   resourceBlynk = String("/external/api/update?token=") + auth + String("&") + String(Vpin) + "=" + val;
-  SerialMon.println(resourceBlynk);
-  SerialMon.print(F("Connecting to "));
-  SerialMon.print(resourceBlynk);
+  //SerialMon.println(resourceBlynk);
+  // SerialMon.println(F("Connecting to "));
+  // SerialMon.print(resourceBlynk);
 
-  SerialMon.println(F("Performing HTTP GET request... "));
+  //SerialMon.println(F("Performing HTTP GET request... "));
   int err = httpBlynk.get(resourceBlynk);
   if (err != 0) {
     SerialMon.println(F("failed to connect"));
@@ -423,7 +405,7 @@ void SendToBlynkValue(String Vpin, String val) {
   }
   else {
     int status = httpBlynk.responseStatusCode();
-    SerialMon.println(F("Response status code: "));
+    SerialMon.print(F("Response status code: "));
     SerialMon.println(status);
     if (status < 1) {
       delay(1000);
@@ -431,7 +413,7 @@ void SendToBlynkValue(String Vpin, String val) {
       SerialMon.print(F("Http Error"));
     }
     else if (status == 200) {
-      SerialMon.println(F("Response Headers:"));
+      //SerialMon.println(F("Response Headers:"));
       int timoutTimer = 20000;
       long startTimer = millis();
       while (httpBlynk.headerAvailable()) {
@@ -445,19 +427,19 @@ void SendToBlynkValue(String Vpin, String val) {
 
       int length = httpBlynk.contentLength();
       if (length >= 0) {
-        SerialMon.print(F("Content length is: "));
-        SerialMon.println(length);
+        // SerialMon.print(F("Content length is: "));
+        // SerialMon.println(length);
       }
       if (httpBlynk.isResponseChunked()) {
         SerialMon.println(F("The response is chunked"));
       }
 
       String body = httpBlynk.responseBody();
-      SerialMon.println(F("Response:"));
-      SerialMon.println(body);
+      // SerialMon.println(F("Response:"));
+      // SerialMon.println(body);
 
-      SerialMon.print(F("Body length is: "));
-      SerialMon.println(body.length());
+      // SerialMon.print(F("Body length is: "));
+      // SerialMon.println(body.length());
 
       // Shutdown
 /*
