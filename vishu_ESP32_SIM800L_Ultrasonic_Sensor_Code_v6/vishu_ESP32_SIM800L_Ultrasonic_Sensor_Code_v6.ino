@@ -103,7 +103,7 @@ TinyGsmClient client(modem);
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */ // DONT CHANGE THIS
 double TIME_TO_SLEEP = 300;        /* Time ESP32 will go to sleep (in seconds) */ // DEEP SLEEP TIME CURRENTLY SET TO 5 Mins
 
-int BLYNK_Upload_Time = 3000; // BLYNK Upload Time Interval, Currently set to 05 seconds
+int BLYNK_Upload_Time = 1000; // BLYNK Upload Time Interval, Currently set to 05 seconds
 int Switch_OFF_Deep_Sleep_Activation_Time = 180000; // TIME AFTER WHICH DEEP SLEEP WILL BE TRIGGERED CURRENTLY SET TO 23Mins
 
 #define IP5306_ADDR          0x75
@@ -289,15 +289,18 @@ void sendBlynk() {
 
 String get_fuel_level(){
   int min_string_len = 36;
-  
+  while (SerialPort.read() >= 0){
+    SerialMon.println("dropped byte");
+    continue;
+  }
   while(1){
-   SerialPort.flush();
    String rx = SerialPort.readStringUntil('#');
    if (rx.length()== 0){
+    SerialMon.println("No Data Available!");
      delay(1000);
      continue;
    }
-   SerialMon.println("Sensor data output, len :" + String( rx.length()) + rx);
+   SerialMon.println("Sensor data output, len :" + String(rx.length()) + rx);
   
    if(rx.length() != min_string_len){
       continue;
@@ -311,7 +314,6 @@ String get_fuel_level(){
    SerialMon.print("Ultrasonic_Sensor_Value(cm) = ");
    SerialMon.println(String(value,2));
    if(value == 0){
-      delay(5000);
       continue;
    }
   return String(value,2);
